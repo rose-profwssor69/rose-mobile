@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="ur">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#03050b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Rose Mobile</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #03050b;
+    --panel: rgba(10, 18, 32, 0.85);
+    --line: rgba(62, 240, 255, 0.2);
+    --cyan: #3ef0ff;
+    --pink: #ff5fd8;
+    --violet: #9b6bff;
+    --green: #3dffa8;
+    --red: #ff4d6d;
+    --amber: #ffc14d;
+    --text: #d9f6ff;
+    --muted: #6f8ea3;
+    --head: "Orbitron", "Segoe UI", sans-serif;
+    --body: "Rajdhani", "Segoe UI", "Noto Nastaliq Urdu", sans-serif;
+    --state: var(--green);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--body); overflow: hidden; }
+  body {
+    background:
+      radial-gradient(500px 400px at 50% 30%, rgba(40, 90, 160, 0.22), transparent 70%),
+      radial-gradient(400px 300px at 0% 100%, rgba(255, 95, 216, 0.1), transparent 70%),
+      var(--bg);
+  }
+  button { font-family: var(--head); cursor: pointer; border: none; }
+  .screen { position: fixed; inset: 0; display: none; flex-direction: column; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+  .screen.show { display: flex; }
+
+  /* ---------- Pair screen ---------- */
+  #pair { justify-content: center; align-items: center; text-align: center; gap: 16px; }
+  .logo { width: 70px; height: 70px; transform: rotate(45deg); border: 3px solid var(--cyan); box-shadow: 0 0 22px var(--cyan), inset 0 0 14px var(--pink); margin-bottom: 18px; }
+  .brand { font-family: var(--head); font-weight: 900; font-size: 30px; letter-spacing: 8px; background: linear-gradient(90deg, var(--cyan), var(--pink)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { color: var(--muted); font-size: 15px; max-width: 300px; line-height: 1.4; }
+  .field { width: 100%; max-width: 320px; padding: 14px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.4); color: var(--text); font-family: var(--head); font-size: 14px; letter-spacing: 2px; text-align: center; outline: none; }
+  .field:focus { border-color: var(--cyan); box-shadow: 0 0 16px rgba(62, 240, 255, 0.25); }
+  .btn-main { padding: 14px 34px; border-radius: 10px; border: 1px solid var(--cyan); background: linear-gradient(135deg, rgba(62, 240, 255, 0.25), rgba(155, 107, 255, 0.25)); color: #eaffff; font-size: 13px; letter-spacing: 3px; font-weight: 700; }
+  .btn-main:active { transform: scale(0.96); }
+  .err { color: #ffb3c1; font-size: 14px; min-height: 18px; }
+
+  /* ---------- Home (standby) ---------- */
+  .top { display: flex; align-items: center; justify-content: space-between; padding: 14px 2px 10px; }
+  .top .brand { font-size: 20px; letter-spacing: 5px; }
+  .pill { display: flex; align-items: center; gap: 7px; font-family: var(--head); font-size: 10px; letter-spacing: 2px; padding: 6px 11px; border-radius: 20px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.4); color: var(--muted); }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .pill.on { color: var(--green); border-color: rgba(61, 255, 168, 0.4); }
+  .pill.on i { background: var(--green); box-shadow: 0 0 8px var(--green); animation: blink 1.6s infinite; }
+  .gear { background: transparent; color: var(--muted); font-size: 20px; padding: 6px; }
+
+  .avatar-wrap { position: relative; width: 170px; height: 170px; margin: 6px auto 4px; border-radius: 50%; border: 1px solid rgba(62, 240, 255, 0.45); box-shadow: 0 0 30px rgba(62, 240, 255, 0.15), inset 0 0 30px rgba(62, 240, 255, 0.08); overflow: hidden; background: radial-gradient(circle, rgba(20, 50, 90, 0.5), rgba(2, 4, 10, 0.9)); }
+  .avatar-wrap::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 1px dashed rgba(255, 95, 216, 0.5); animation: spin 14s linear infinite; }
+  #avatarCanvas { width: 100%; height: 100%; display: block; }
+  .greet { text-align: center; font-family: var(--head); font-size: 12px; letter-spacing: 3px; color: var(--cyan); margin: 8px 0 12px; }
+  .call-btn { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 auto 14px; padding: 15px 30px; border-radius: 40px; border: 1px solid var(--green); background: linear-gradient(135deg, rgba(61, 255, 168, 0.25), rgba(62, 240, 255, 0.15)); color: #eafff5; font-size: 13px; letter-spacing: 3px; font-weight: 700; box-shadow: 0 0 24px rgba(61, 255, 168, 0.3); }
+  .call-btn:active { transform: scale(0.96); }
+
+  .chat { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 10px 2px; border-top: 1px solid var(--line); }
+  .msg { max-width: 86%; padding: 9px 12px; border-radius: 10px; font-size: 16px; font-weight: 500; line-height: 1.4; animation: msgIn 0.3s ease both; word-wrap: break-word; }
+  .msg small { display: block; font-family: var(--head); font-size: 9px; letter-spacing: 2px; margin-bottom: 3px; opacity: 0.8; }
+  .msg.rose { align-self: flex-start; background: rgba(62, 240, 255, 0.08); border: 1px solid rgba(62, 240, 255, 0.25); border-left: 3px solid var(--cyan); }
+  .msg.rose small { color: var(--cyan); }
+  .msg.me { align-self: flex-end; background: rgba(255, 95, 216, 0.1); border: 1px solid rgba(255, 95, 216, 0.3); border-right: 3px solid var(--pink); }
+  .msg.me small { color: var(--pink); }
+  .msg.sys { align-self: center; font-size: 13px; color: var(--muted); background: transparent; border: 1px dashed var(--line); }
+  .bar { display: flex; gap: 8px; padding: 10px 0 14px; }
+  .bar input { flex: 1; min-width: 0; padding: 13px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.4); color: var(--text); font-family: var(--body); font-size: 16px; outline: none; }
+  .bar button { padding: 0 16px; border-radius: 10px; border: 1px solid var(--cyan); background: rgba(62, 240, 255, 0.15); color: var(--cyan); font-size: 11px; letter-spacing: 2px; }
+
+  /* ---------- Live call ---------- */
+  #call { padding: 0; background: radial-gradient(ellipse at 50% 40%, rgba(20, 50, 90, 0.5), rgba(2, 4, 10, 0.98)); }
+  #callCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .call-top { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; padding: calc(env(safe-area-inset-top) + 22px) 16px 0; gap: 6px; }
+  .call-name { font-family: var(--head); font-weight: 900; font-size: 22px; letter-spacing: 8px; color: var(--text); text-shadow: 0 0 14px rgba(62, 240, 255, 0.5); }
+  .call-time { font-family: var(--head); font-size: 12px; letter-spacing: 3px; color: var(--muted); }
+  .call-state { display: flex; align-items: center; gap: 8px; font-family: var(--head); font-size: 11px; letter-spacing: 3px; color: var(--state); text-shadow: 0 0 10px var(--state); }
+  .call-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--state); box-shadow: 0 0 10px var(--state); animation: blink 1.2s infinite; }
+  .live-text { position: absolute; z-index: 2; left: 18px; right: 18px; bottom: calc(env(safe-area-inset-bottom) + 130px); text-align: center; font-size: 18px; font-weight: 600; min-height: 50px; color: var(--text); text-shadow: 0 2px 10px #000; }
+  .call-ctrl { position: absolute; z-index: 2; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 34px); display: flex; justify-content: center; gap: 34px; }
+  .round { width: 66px; height: 66px; border-radius: 50%; font-size: 24px; color: #fff; display: grid; place-items: center; }
+  .round.mute { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.25); }
+  .round.mute.on { background: rgba(255, 193, 77, 0.2); border-color: var(--amber); }
+  .round.end { background: linear-gradient(135deg, #ff4d6d, #b3002d); box-shadow: 0 0 24px rgba(255, 77, 109, 0.55); }
+  .round:active { transform: scale(0.93); }
+  body.listening { --state: var(--pink); }
+  body.thinking { --state: var(--violet); }
+  body.speaking { --state: var(--cyan); }
+
+  /* ---------- Settings sheet ---------- */
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 18px 18px calc(env(safe-area-inset-bottom) + 18px); background: #070c18; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; transform: translateY(110%); transition: transform 0.3s ease; }
+  .sheet.show { transform: translateY(0); }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px dashed var(--line); font-size: 16px; font-weight: 600; color: var(--muted); }
+  .chips { display: flex; gap: 8px; }
+  .chip { padding: 7px 13px; border-radius: 16px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 11px; letter-spacing: 1px; }
+  .chip.on { color: var(--cyan); border-color: var(--cyan); background: rgba(62, 240, 255, 0.1); }
+  .danger { color: var(--red); border-color: rgba(255, 77, 109, 0.5); }
+
+  @keyframes blink { 50% { opacity: 0.35; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+
+<!-- ============ 1) PAIR SCREEN ============ -->
+<section id="pair" class="screen">
+  <div class="logo"></div>
+  <div class="brand">ROSE</div>
+  <div class="sub">Yeh app sirf aap ke liye hai, Professor. PC par .env.local wala <b>Pairing Code</b> yahan likhein.</div>
+  <input id="pairInput" class="field" placeholder="PAIRING CODE" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button id="pairBtn" class="btn-main">PAIR KAREIN</button>
+  <div id="pairErr" class="err"></div>
+</section>
+
+<!-- ============ 2) HOME / STANDBY ============ -->
+<section id="home" class="screen">
+  <div class="top">
+    <div class="brand">ROSE</div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <div id="pcPill" class="pill"><i></i><span id="pcText">PC OFFLINE</span></div>
+      <button id="gearBtn" class="gear" aria-label="Settings">⚙</button>
+    </div>
+  </div>
+  <div class="avatar-wrap"><canvas id="avatarCanvas"></canvas></div>
+  <div id="greet" class="greet">STANDBY</div>
+  <button id="callBtn" class="call-btn">📞 ROSE KO CALL KAREIN</button>
+  <div id="chat" class="chat"></div>
+  <form id="bar" class="bar">
+    <input id="textIn" dir="auto" placeholder="Rose ko likhein, Professor..." autocomplete="off">
+    <button type="submit">SEND</button>
+  </form>
+</section>
+
+<!-- ============ 3) LIVE CALL ============ -->
+<section id="call" class="screen">
+  <canvas id="callCanvas"></canvas>
+  <div class="call-top">
+    <div class="call-name">ROSE</div>
+    <div id="callTime" class="call-time">00:00</div>
+    <div class="call-state"><i></i><span id="callState">CONNECTING</span></div>
+  </div>
+  <div id="liveText" class="live-text" dir="auto"></div>
+  <div class="call-ctrl">
+    <button id="muteBtn" class="round mute" aria-label="Mute">🎤</button>
+    <button id="endBtn" class="round end" aria-label="End call">✕</button>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<div id="sheet" class="sheet">
+  <div class="row"><span>Bolne ki zubaan</span>
+    <div class="chips"><button class="chip" data-lang="ur-PK">اردو</button><button class="chip" data-lang="en-US">English</button></div>
+  </div>
+  <div class="row"><span>Notifications</span><button id="notifBtn" class="chip">ALLOW</button></div>
+  <div class="row"><span>Pairing hatayein</span><button id="unpairBtn" class="chip danger">UNPAIR</button></div>
+  <div class="row" style="border:none"><span></span><button id="closeSheet" class="chip">BAND</button></div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================
+   ROSE MOBILE - Professor ka private app
+   Rabta: PC <-> ntfy.sh (sirf "pipe") <-> yeh app
+   Har paigham AES-GCM se encrypted: pairing code ke baghair koi parh / bhej nahi sakta
+   ========================================================= */
+const $ = (id) => document.getElementById(id);
+const te = new TextEncoder();
+const td = new TextDecoder();
+const USER_TITLE = "Professor";
+
+let pair = null;          // { key, up, down }
+let ws = null;
+let pcSeen = 0;
+let lang = "ur-PK";
+const pending = new Map(); // cmd id -> timeout
+const seenIds = new Set();
+
+function store(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+/* ---------- Encryption (PC wali bilkul same) ---------- */
+function toB64(bytes) { let s = ""; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); }
+function fromB64(s) { const bin = atob(s); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }
+async function sha256Hex(text) {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode(text)));
+  let h = ""; for (let i = 0; i < d.length; i++) h += (d[i] < 16 ? "0" : "") + d[i].toString(16); return h;
+}
+async function derivePair(code) {
+  const base = await crypto.subtle.importKey("raw", te.encode(code), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: te.encode("rose-pair-v1"), iterations: 150000, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  const up = "rose-up-" + (await sha256Hex("up:" + code)).slice(0, 28);
+  const down = "rose-dn-" + (await sha256Hex("down:" + code)).slice(0, 28);
+  return { key, up, down };
+}
+async function sealMsg(key, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, te.encode(JSON.stringify(obj)));
+  return "R1." + toB64(iv) + "." + toB64(new Uint8Array(ct));
+}
+async function openMsg(key, s) {
+  if (!s || !s.startsWith("R1.")) return null;
+  const p = s.split("."); if (p.length !== 3) return null;
+  try { return JSON.parse(td.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64(p[1]) }, key, fromB64(p[2])))); }
+  catch (e) { return null; }
+}
+function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+/* ---------- Screens ---------- */
+function show(id) {
+  ["pair", "home", "call"].forEach((s) => $(s).classList.toggle("show", s === id));
+  activeCanvas = id === "call" ? $("callCanvas") : id === "home" ? $("avatarCanvas") : null;
+  resizeCanvas();
+}
+
+/* ---------- Chat ---------- */
+function addMsg(who, text) {
+  const d = document.createElement("div");
+  d.className = "msg " + who;
+  const label = who === "rose" ? "ROSE" : who === "me" ? USER_TITLE.toUpperCase() : "";
+  if (label) { const sm = document.createElement("small"); sm.textContent = label + " · " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); d.appendChild(sm); }
+  const sp = document.createElement("span"); sp.dir = "auto"; sp.textContent = text; d.appendChild(sp);
+  $("chat").appendChild(d);
+  $("chat").scrollTop = $("chat").scrollHeight;
+  const hist = JSON.parse(load("rose-chat") || "[]"); hist.push([who, text]); store("rose-chat", JSON.stringify(hist.slice(-40)));
+}
+function restoreChat() {
+  const hist = JSON.parse(load("rose-chat") || "[]");
+  hist.forEach((h) => addMsgQuiet(h[0], h[1]));
+}
+function addMsgQuiet(who, text) {
+  const d = document.createElement("div"); d.className = "msg " + who;
+  const sp = document.createElement("span"); sp.dir = "auto"; sp.textContent = text; d.appendChild(sp);
+  $("chat").appendChild(d); $("chat").scrollTop = $("chat").scrollHeight;
+}
+
+/* ---------- PC status ---------- */
+function updatePill() {
+  const on = Date.now() - pcSeen < 100000;
+  $("pcPill").classList.toggle("on", on);
+  $("pcText").textContent = on ? "PC LIVE" : "PC OFFLINE";
+}
+setInterval(updatePill, 5000);
+
+/* ---------- Connection (ntfy WebSocket, encrypted) ---------- */
+let retry = 2000, pingTimer = 0, reconnectTimer = 0;
+function connect() {
+  if (!pair) return;
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+  ws = new WebSocket("wss://ntfy.sh/" + pair.down + "/ws?since=2m");
+  ws.onopen = () => { retry = 2000; sendPC({ t: "ping" }); };
+  ws.onmessage = async (e) => {
+    let ev; try { ev = JSON.parse(e.data); } catch (x) { return; }
+    if (ev.event !== "message") return;
+    let body = ev.message || "";
+    if (ev.attachment && !body.startsWith("R1.")) { try { body = await (await fetch(ev.attachment.url)).text(); } catch (x) { return; } }
+    const m = await openMsg(pair.key, body.trim());
+    if (!m || !m.id || seenIds.has(m.id)) return;
+    if (Math.abs(Date.now() - m.ts) > 10 * 60 * 1000) return;
+    seenIds.add(m.id);
+    pcSeen = Date.now(); updatePill();
+    onPC(m);
+  };
+  ws.onclose = () => {
+    if (document.hidden) return; // background mein battery bachana; wapas aate hi jud jayega
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connect, retry);
+    retry = Math.min(retry * 2, 30000);
+  };
+  ws.onerror = () => { try { ws.close(); } catch (x) {} };
+  clearInterval(pingTimer);
+  pingTimer = setInterval(() => { if (!document.hidden) sendPC({ t: "ping" }); }, 40000);
+}
+
+async function sendPC(obj) {
+  if (!pair) return false;
+  const m = Object.assign({ id: newId(), ts: Date.now() }, obj);
+  try {
+    const res = await fetch("https://ntfy.sh/" + pair.up, { method: "POST", body: await sealMsg(pair.key, m) });
+    return res.ok ? m.id : false;
+  } catch (e) { return false; }
+}
+
+/* ---------- PC se aaye paigham ---------- */
+function onPC(m) {
+  if (m.t === "status" && m.text === "thinking") { setCallState("thinking"); return; }
+  if (m.t === "reply" || m.t === "done" || m.t === "error") {
+    if (m.re && pending.has(m.re)) { clearTimeout(pending.get(m.re)); pending.delete(m.re); }
+    const text = m.t === "error" ? "⚠ " + m.text : m.text;
+    addMsg(m.t === "error" ? "sys" : "rose", text);
+    if (inCall) { $("liveText").textContent = text; speak(text); }
+    else { setCallState("idle"); if (document.hidden) notify("Rose", text); }
+  }
+}
+
+/* ---------- Hukam bhejna ---------- */
+async function sendCommand(text) {
+  text = text.trim(); if (!text) return;
+  addMsg("me", text);
+  setCallState("thinking");
+  const id = await sendPC({ t: "cmd", text: text });
+  if (!id) { addMsg("sys", "Internet ka masla: hukam nahi gaya."); setCallState(inCall ? "listening" : "idle"); if (inCall) listenSoon(); return; }
+  pending.set(id, setTimeout(() => {
+    pending.delete(id);
+    addMsg("sys", "PC se jawab nahi aaya. Kya PC par Rose chal rahi hai?");
+    if (inCall) { speak("Professor, PC se rabta nahi ho saka."); } else setCallState("idle");
+  }, 45000));
+}
+
+/* ---------- Notifications ---------- */
+async function notify(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try { const reg = await navigator.serviceWorker.ready; reg.showNotification(title, { body: body, icon: "icon.svg", tag: "rose" }); }
+  catch (e) { try { new Notification(title, { body: body }); } catch (x) {} }
+}
+
+/* =========================================================
+   LIVE CALL: phone ki apni awaz pehchaan + awaz (free, no key)
+   ========================================================= */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let inCall = false, muted = false, rec = null, callStart = 0, callTimer = 0, silentTries = 0;
+
+function setCallState(s) {
+  document.body.classList.remove("listening", "thinking", "speaking");
+  if (s !== "idle") document.body.classList.add(s);
+  const label = { idle: "CONNECTED", listening: muted ? "MUTED" : "LISTENING", thinking: "THINKING", speaking: "SPEAKING" }[s] || s;
+  $("callState").textContent = label;
+  $("greet").textContent = s === "idle" ? "STANDBY" : label;
+}
+
+function startCall() {
+  if (!SR) { addMsg("sys", "Is browser mein awaz wala feature nahi. Android par Chrome se app install karein. Tab tak likh kar baat karein."); return; }
+  inCall = true; muted = false; silentTries = 0;
+  $("muteBtn").classList.remove("on");
+  show("call");
+  callStart = Date.now();
+  clearInterval(callTimer);
+  callTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - callStart) / 1000);
+    $("callTime").textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  }, 1000);
+  const h = new Date().getHours();
+  const g = h >= 5 && h < 12 ? "Good morning" : h < 17 && h >= 12 ? "Good afternoon" : h >= 17 && h < 21 ? "Good evening" : "Good night";
+  const hello = g + ", " + USER_TITLE + ". What is your command?";
+  $("liveText").textContent = hello;
+  speak(hello);
+}
+
+function endCall() {
+  inCall = false;
+  clearInterval(callTimer);
+  try { if (rec) rec.abort(); } catch (e) {}
+  try { speechSynthesis.cancel(); } catch (e) {}
+  setCallState("idle");
+  show("home");
+}
+
+function listenSoon() { setTimeout(() => { if (inCall && !muted) listen(); }, 350); }
+
+function listen() {
+  if (!inCall || muted) return;
+  try { if (rec) rec.abort(); } catch (e) {}
+  rec = new SR();
+  rec.lang = lang;
+  rec.interimResults = true;
+  rec.continuous = false;
+  rec.maxAlternatives = 1;
+  let finalText = "";
+  setCallState("listening");
+  rec.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    $("liveText").textContent = (finalText + " " + interim).trim();
+  };
+  rec.onerror = (e) => { if (e.error === "not-allowed") { addMsg("sys", "Mic ki ijazat nahi mili."); endCall(); } };
+  rec.onend = () => {
+    if (!inCall) return;
+    if (finalText.trim()) { silentTries = 0; sendCommand(finalText); }
+    else if (++silentTries < 4) listenSoon();
+    else { silentTries = 0; muted = true; $("muteBtn").classList.add("on"); setCallState("listening"); $("liveText").textContent = "Mic ruka hua hai. Baat karne ke liye 🎤 dabayein."; }
+  };
+  try { rec.start(); } catch (e) { listenSoon(); }
+}
+
+function speak(text) {
+  if (!("speechSynthesis" in window)) { if (inCall) listenSoon(); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const isUrdu = /[؀-ۿ]/.test(text);
+  const voices = speechSynthesis.getVoices();
+  const v = isUrdu ? voices.find((x) => x.lang.startsWith("ur")) : (voices.find((x) => /female|zira|samantha|aria|jenny/i.test(x.name) && x.lang.startsWith("en")) || voices.find((x) => x.lang.startsWith("en")));
+  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = isUrdu ? "ur-PK" : "en-US";
+  u.rate = 1; u.pitch = 1.05;
+  u.onend = () => { if (inCall) listenSoon(); else setCallState("idle"); };
+  u.onerror = u.onend;
+  setCallState("speaking");
+  speechSynthesis.speak(u);
+}
+
+/* =========================================================
+   HOLOGRAM (PC wali Rose - asal chehra, saakin)
+   ========================================================= */
+function buildFigure() {
+  const W = 300, H = 400;
+  function layer(draw) { const c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d"); x.fillStyle = "#fff"; draw(x); return x.getImageData(0, 0, W, H).data; }
+  const body = layer((b) => {
+    b.beginPath(); b.moveTo(150, 56); b.bezierCurveTo(186, 56, 200, 86, 199, 118); b.bezierCurveTo(198, 150, 184, 174, 150, 186);
+    b.bezierCurveTo(116, 174, 102, 150, 101, 118); b.bezierCurveTo(100, 86, 114, 56, 150, 56); b.closePath(); b.fill();
+    b.fillRect(137, 170, 26, 52);
+    b.beginPath(); b.moveTo(137, 206); b.bezierCurveTo(118, 224, 70, 226, 48, 256); b.bezierCurveTo(32, 282, 26, 340, 24, 400);
+    b.lineTo(276, 400); b.bezierCurveTo(274, 340, 268, 282, 252, 256); b.bezierCurveTo(230, 226, 182, 224, 163, 206); b.closePath(); b.fill();
+    b.globalCompositeOperation = "destination-out";
+    [[131, 103, 12, 1.6, 0.15], [169, 103, 12, 1.6, -0.15], [132, 116, 11, 3.6, 0.1], [168, 116, 11, 3.6, -0.1], [150, 140, 4.5, 1.8, 0], [150, 157, 11, 2.4, 0]]
+      .forEach((e) => { b.beginPath(); b.ellipse(e[0], e[1], e[2], e[3], e[4], 0, Math.PI * 2); b.fill(); });
+  });
+  const hair = layer((h) => {
+    h.beginPath(); h.moveTo(150, 38); h.bezierCurveTo(78, 34, 74, 112, 82, 168); h.bezierCurveTo(88, 214, 66, 258, 50, 330);
+    h.bezierCurveTo(62, 338, 84, 336, 100, 326); h.bezierCurveTo(112, 280, 120, 236, 114, 196); h.lineTo(186, 196);
+    h.bezierCurveTo(180, 236, 188, 280, 200, 326); h.bezierCurveTo(216, 336, 238, 338, 250, 330); h.bezierCurveTo(234, 258, 212, 214, 218, 168);
+    h.bezierCurveTo(226, 112, 222, 34, 150, 38); h.closePath(); h.fill();
+  });
+  const bang = layer((g) => {
+    g.beginPath(); g.moveTo(100, 108); g.bezierCurveTo(98, 58, 196, 50, 202, 100); g.quadraticCurveTo(178, 72, 140, 84); g.quadraticCurveTo(116, 92, 100, 108); g.closePath(); g.fill();
+  });
+  const A = (d, x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : d[(y * W + x) * 4 + 3];
+  const kind = (x, y) => { if (A(bang, x, y)) return 2; const hr = A(hair, x, y) > 0; if (hr && y > 215) return 2; if (A(body, x, y)) return 1; return hr ? 2 : 0; };
+  const edges = [], fills = [], st = 3;
+  for (let y = 0; y < H; y += st) for (let x = 0; x < W; x += st) {
+    const k = kind(x, y); if (!k) continue;
+    const edge = kind(x + st, y) !== k || kind(x - st, y) !== k || kind(x, y + st) !== k || kind(x, y - st) !== k;
+    const p = { hx: x + (Math.random() - 0.5) * 2, hy: y + (Math.random() - 0.5) * 2, x: 0, y: 0, hair: k === 2, edge, ph: Math.random() * 6.28, tw: 1 + Math.random() * 3 };
+    (edge ? edges : fills).push(p);
+  }
+  const keep = Math.min(1, 900 / fills.length);
+  const picked = fills.filter((p) => Math.random() < keep * (p.hy > 300 ? 1 - (p.hy - 300) / 120 : 1));
+  return edges.concat(picked).sort((a, c) => Number(c.hair) - Number(a.hair));
+}
+
+const pts = buildFigure();
+let activeCanvas = null, cw = 1, ch = 1, t = 0, last = 0, introT = 0;
+function resizeCanvas() {
+  if (!activeCanvas) return;
+  const r = activeCanvas.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cw = Math.max(1, r.width); ch = Math.max(1, r.height);
+  activeCanvas.width = Math.floor(cw * dpr); activeCanvas.height = Math.floor(ch * dpr);
+  activeCanvas.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+  for (const p of pts) { p.x = Math.random() * cw; p.y = Math.random() * ch; }
+  introT = 0;
+}
+window.addEventListener("resize", resizeCanvas);
+
+function frame(ts) {
+  requestAnimationFrame(frame);
+  if (document.hidden || !activeCanvas) return;
+  if (ts - last < 33) return;
+  const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0.033; last = ts; t += dt; introT += dt;
+  const ctx = activeCanvas.getContext("2d");
+  const big = activeCanvas.id === "callCanvas";
+  ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1; ctx.clearRect(0, 0, cw, ch);
+  const scale = big ? Math.min((ch * 0.62) / 400, (cw * 0.86) / 300) : Math.min((ch * 1.15) / 400, (cw * 1.05) / 300);
+  const ox = cw / 2 - 150 * scale;
+  const oy = big ? ch * 0.52 - 200 * scale : ch * 0.03 - 30 * scale;
+  if (big) {
+    ctx.save(); ctx.translate(cw / 2, oy + 398 * scale); ctx.scale(1, 0.22);
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath(); ctx.setLineDash([14 + i * 6, 10]); ctx.lineDashOffset = t * 40 * (i % 2 ? -1 : 1);
+      ctx.arc(0, 0, (110 + i * 42) * scale, 0, Math.PI * 2);
+      ctx.strokeStyle = i === 1 ? "rgba(255,95,216,0.45)" : "rgba(62,240,255,0.5)"; ctx.lineWidth = 2; ctx.stroke();
+    }
+    ctx.restore(); ctx.setLineDash([]);
+  }
+  const ease = 0.03 + Math.min(1, introT / 2.5) * 0.1;
+  ctx.globalCompositeOperation = "lighter";
+  let cur = "";
+  for (const p of pts) {
+    p.x += (ox + p.hx * scale - p.x) * ease; p.y += (oy + p.hy * scale - p.y) * ease;
+    let a = (p.edge ? 0.85 : 0.42) * (0.75 + 0.25 * Math.sin(t * p.tw + p.ph));
+    if (p.hy > 300) a *= Math.max(0, 1 - (p.hy - 300) / 110);
+    if (a <= 0.02) continue;
+    const col = p.hair ? "#ff5fd8" : "#3ef0ff"; if (col !== cur) { ctx.fillStyle = col; cur = col; }
+    ctx.globalAlpha = Math.min(1, a);
+    const s = (p.edge ? 1.8 : 1.3) * (big ? 1 : 0.9);
+    ctx.fillRect(p.x, p.y, s, s);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+}
+requestAnimationFrame(frame);
+
+/* =========================================================
+   START
+   ========================================================= */
+async function startWith(code) {
+  pair = await derivePair(code);
+  show("home");
+  if (!$("chat").children.length) {
+    restoreChat();
+    if (!$("chat").children.length) addMsg("rose", "Assalam-o-Alaikum, " + USER_TITLE + ". Rose Mobile tayyar hai.");
+  }
+  connect();
+}
+
+$("pairBtn").onclick = async () => {
+  const code = $("pairInput").value.trim();
+  if (code.length < 12) { $("pairErr").textContent = "Code bohat chhota hai (kam az kam 12 huroof)."; return; }
+  $("pairErr").textContent = "Jor rahi hoon...";
+  store("rose-pair", code);
+  await startWith(code);
+  $("pairErr").textContent = "";
+};
+$("callBtn").onclick = startCall;
+$("endBtn").onclick = endCall;
+$("muteBtn").onclick = () => {
+  muted = !muted; $("muteBtn").classList.toggle("on", muted);
+  if (muted) { try { if (rec) rec.abort(); } catch (e) {} setCallState("listening"); }
+  else { silentTries = 0; $("liveText").textContent = ""; listen(); }
+};
+$("bar").onsubmit = (e) => { e.preventDefault(); const v = $("textIn").value; $("textIn").value = ""; sendCommand(v); };
+$("gearBtn").onclick = () => $("sheet").classList.add("show");
+$("closeSheet").onclick = () => $("sheet").classList.remove("show");
+document.querySelectorAll("[data-lang]").forEach((b) => {
+  b.onclick = () => { lang = b.dataset.lang; store("rose-lang", lang); document.querySelectorAll("[data-lang]").forEach((x) => x.classList.toggle("on", x === b)); };
+});
+$("notifBtn").onclick = async () => {
+  if (!("Notification" in window)) { $("notifBtn").textContent = "N/A"; return; }
+  const p = await Notification.requestPermission(); $("notifBtn").textContent = p === "granted" ? "ON" : "OFF";
+};
+$("unpairBtn").onclick = () => {
+  store("rose-pair", null); store("rose-chat", null); pair = null;
+  try { if (ws) ws.close(); } catch (e) {}
+  $("chat").innerHTML = ""; $("sheet").classList.remove("show"); show("pair");
+};
+document.addEventListener("visibilitychange", () => { if (!document.hidden && pair) { connect(); sendPC({ t: "ping" }); } });
+
+lang = load("rose-lang") || "ur-PK";
+document.querySelectorAll("[data-lang]").forEach((x) => x.classList.toggle("on", x.dataset.lang === lang));
+if ("Notification" in window) $("notifBtn").textContent = Notification.permission === "granted" ? "ON" : "ALLOW";
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+const saved = load("rose-pair");
+if (saved) startWith(saved); else show("pair");
+</script>
+</body>
+</html>
