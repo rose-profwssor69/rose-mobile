@@ -166,6 +166,7 @@
   </div>
   <div class="row"><span>Notifications</span><button id="notifBtn" class="chip">ALLOW</button></div>
   <div class="row"><span>Awaz test karein</span><button id="voiceBtn" class="chip">TEST</button></div>
+  <div class="row"><span>PAIR ID (PC se milayein)</span><b id="pairIdTxt" style="font-family:var(--head);letter-spacing:2px;color:var(--cyan)">----</b></div>
   <div class="row"><span>Pairing hatayein</span><button id="unpairBtn" class="chip danger">UNPAIR</button></div>
   <div class="row" style="border:none"><span></span><button id="closeSheet" class="chip">BAND</button></div>
 </div>
@@ -546,6 +547,7 @@ requestAnimationFrame(frame);
    ========================================================= */
 async function startWith(code) {
   pair = await derivePair(code);
+  $("pairIdTxt").textContent = pair.up.slice(8, 12).toUpperCase();
   show("home");
   if (!$("chat").children.length) {
     restoreChat();
@@ -595,8 +597,18 @@ lang = load("rose-lang") || "ur-PK";
 document.querySelectorAll("[data-lang]").forEach((x) => x.classList.toggle("on", x.dataset.lang === lang));
 if ("Notification" in window) $("notifBtn").textContent = Notification.permission === "granted" ? "ON" : "ALLOW";
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+// QR se aaya link: #pair=CODE  (yeh hissa kabhi server tak nahi jata)
+let fromQr = "";
+if (location.hash.indexOf("#pair=") === 0) {
+  try { fromQr = decodeURIComponent(location.hash.slice(6)).trim(); } catch (e) { fromQr = ""; }
+  history.replaceState(null, "", location.pathname + location.search);
+}
 const saved = load("rose-pair");
-if (saved) startWith(saved); else show("pair");
+if (fromQr.length >= 12) {
+  if (saved !== fromQr) { store("rose-chat", null); }
+  store("rose-pair", fromQr);
+  startWith(fromQr).then(() => addMsg("sys", "QR se jur gayi! PAIR ID: " + pair.up.slice(8, 12).toUpperCase()));
+} else if (saved) startWith(saved); else show("pair");
 </script>
 </body>
 </html>
