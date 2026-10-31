@@ -1,5 +1,5 @@
 // Rose Mobile - service worker (offline shell + notifications)
-const CACHE = "rose-mobile-v3";
+const CACHE = "rose-mobile-v4";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (e) => {
