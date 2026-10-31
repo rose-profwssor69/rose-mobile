@@ -165,6 +165,7 @@
     <div class="chips"><button class="chip" data-lang="ur-PK">اردو</button><button class="chip" data-lang="en-US">English</button></div>
   </div>
   <div class="row"><span>Notifications</span><button id="notifBtn" class="chip">ALLOW</button></div>
+  <div class="row"><span>Awaz test karein</span><button id="voiceBtn" class="chip">TEST</button></div>
   <div class="row"><span>Pairing hatayein</span><button id="unpairBtn" class="chip danger">UNPAIR</button></div>
   <div class="row" style="border:none"><span></span><button id="closeSheet" class="chip">BAND</button></div>
 </div>
@@ -250,20 +251,23 @@ function addMsgQuiet(who, text) {
 
 /* ---------- PC status ---------- */
 function updatePill() {
-  const on = Date.now() - pcSeen < 100000;
+  const on = Date.now() - pcSeen < 400000;
   $("pcPill").classList.toggle("on", on);
   $("pcText").textContent = on ? "PC LIVE" : "PC OFFLINE";
 }
 setInterval(updatePill, 5000);
 
-/* ---------- Connection (ntfy WebSocket, encrypted) ---------- */
-let retry = 2000, pingTimer = 0, reconnectTimer = 0;
+/* ---------- Connection (ntfy WebSocket, encrypted) ----------
+   ntfy free: roz ke sirf 250 paigham (ghar ke internet par phone + PC mila kar).
+   Is liye "ping" sirf app khulne par aur har 5 minute (jab screen on ho). */
+let retry = 2000, reconnectTimer = 0, lastWsMsg = 0, lastPing = 0, limitHit = false;
 function connect() {
   if (!pair) return;
   if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
   ws = new WebSocket("wss://ntfy.sh/" + pair.down + "/ws?since=2m");
-  ws.onopen = () => { retry = 2000; sendPC({ t: "ping" }); };
+  ws.onopen = () => { retry = 2000; lastWsMsg = Date.now(); pingPC(false); };
   ws.onmessage = async (e) => {
+    lastWsMsg = Date.now();
     let ev; try { ev = JSON.parse(e.data); } catch (x) { return; }
     if (ev.event !== "message") return;
     let body = ev.message || "";
@@ -275,22 +279,36 @@ function connect() {
     pcSeen = Date.now(); updatePill();
     onPC(m);
   };
-  ws.onclose = () => {
-    if (document.hidden) return; // background mein battery bachana; wapas aate hi jud jayega
-    clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(connect, retry);
-    retry = Math.min(retry * 2, 30000);
-  };
+  ws.onclose = () => { scheduleReconnect(); };
   ws.onerror = () => { try { ws.close(); } catch (x) {} };
-  clearInterval(pingTimer);
-  pingTimer = setInterval(() => { if (!document.hidden) sendPC({ t: "ping" }); }, 40000);
 }
+function scheduleReconnect() {
+  if (document.hidden || !pair) return; // background mein battery bachana; wapas aate hi jud jayega
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connect, retry);
+  retry = Math.min(retry * 2, 30000);
+}
+// Chupke se toota connection pakarna: ntfy har ~45s "keepalive" bhejta hai
+setInterval(() => {
+  if (!pair || document.hidden) return;
+  if (ws && ws.readyState === 1 && Date.now() - lastWsMsg > 100000) { try { ws.close(); } catch (x) {} }
+  else if (!ws || ws.readyState === 3) connect();
+}, 20000);
+// PC zinda hai? (kam se kam paigham)
+function pingPC(force) {
+  if (!force && Date.now() - lastPing < 60000) return;
+  lastPing = Date.now();
+  sendPC({ t: "ping" });
+}
+setInterval(() => { if (!document.hidden && pair) pingPC(false); }, 300000);
+window.addEventListener("online", () => { if (pair) { retry = 2000; connect(); } });
 
 async function sendPC(obj) {
   if (!pair) return false;
   const m = Object.assign({ id: newId(), ts: Date.now() }, obj);
   try {
     const res = await fetch("https://ntfy.sh/" + pair.up, { method: "POST", body: await sealMsg(pair.key, m) });
+    if (res.status === 429 && !limitHit) { limitHit = true; addMsg("sys", "ntfy ki aaj ki free limit (250 paigham) khatam ho gayi. Kal phir chalega."); }
     return res.ok ? m.id : false;
   } catch (e) { return false; }
 }
@@ -399,20 +417,39 @@ function listen() {
   try { rec.start(); } catch (e) { listenSoon(); }
 }
 
+let speakTimer = 0;
+function pickVoice() {
+  const vs = speechSynthesis.getVoices();
+  const en = vs.filter((x) => x.lang.toLowerCase().startsWith("en"));
+  const female = /female|aria|jenny|ava|emma|samantha|zira|sonia|libby|natural|google us english|en-us-x-(sfg|tpc|iol)/i;
+  return en.find((x) => female.test(x.name) && x.localService) || en.find((x) => female.test(x.name)) || en.find((x) => x.localService) || en[0] || vs[0] || null;
+}
 function speak(text) {
   if (!("speechSynthesis" in window)) { if (inCall) listenSoon(); return; }
+  clearInterval(speakTimer);
   speechSynthesis.cancel();
+  if (speechSynthesis.paused) speechSynthesis.resume();
+  // Urdu rasm-ul-khat English awaz nahi parh sakti: phir bhi koshish ur-PK se
+  const isUrdu = /[\u0600-\u06ff]/.test(text);
   const u = new SpeechSynthesisUtterance(text);
-  const isUrdu = /[؀-ۿ]/.test(text);
-  const voices = speechSynthesis.getVoices();
-  const v = isUrdu ? voices.find((x) => x.lang.startsWith("ur")) : (voices.find((x) => /female|zira|samantha|aria|jenny/i.test(x.name) && x.lang.startsWith("en")) || voices.find((x) => x.lang.startsWith("en")));
+  const v = isUrdu ? speechSynthesis.getVoices().find((x) => x.lang.toLowerCase().startsWith("ur")) : pickVoice();
   if (v) { u.voice = v; u.lang = v.lang; } else u.lang = isUrdu ? "ur-PK" : "en-US";
-  u.rate = 1; u.pitch = 1.05;
-  u.onend = () => { if (inCall) listenSoon(); else setCallState("idle"); };
-  u.onerror = u.onend;
+  u.rate = 1; u.pitch = 1.05; u.volume = 1;
+  let done = false;
+  const finish = () => { if (done) return; done = true; clearInterval(speakTimer); if (inCall) listenSoon(); else setCallState("idle"); };
+  u.onend = finish;
+  u.onerror = (e) => { if (e.error === "interrupted" || e.error === "canceled") return; finish(); };
   setCallState("speaking");
   speechSynthesis.speak(u);
+  // Hifazat: Android par awaz kabhi ruk jati ya "khatam" signal nahi aata
+  const started = Date.now(), maxMs = 4000 + text.length * 110;
+  speakTimer = setInterval(() => {
+    if (speechSynthesis.paused) speechSynthesis.resume();
+    if (!speechSynthesis.speaking && !speechSynthesis.pending && Date.now() - started > 1500) finish();
+    else if (Date.now() - started > maxMs) { speechSynthesis.cancel(); finish(); }
+  }, 1000);
 }
+if ("speechSynthesis" in window) { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices(); }
 
 /* =========================================================
    HOLOGRAM (PC wali Rose - asal chehra, saakin)
@@ -542,12 +579,17 @@ $("notifBtn").onclick = async () => {
   if (!("Notification" in window)) { $("notifBtn").textContent = "N/A"; return; }
   const p = await Notification.requestPermission(); $("notifBtn").textContent = p === "granted" ? "ON" : "OFF";
 };
+$("voiceBtn").onclick = () => {
+  const v = "speechSynthesis" in window ? pickVoice() : null;
+  $("voiceBtn").textContent = v ? v.name.slice(0, 14) : "NO VOICE";
+  speak("Hello " + USER_TITLE + ". Meri awaz aa rahi hai?");
+};
 $("unpairBtn").onclick = () => {
   store("rose-pair", null); store("rose-chat", null); pair = null;
   try { if (ws) ws.close(); } catch (e) {}
   $("chat").innerHTML = ""; $("sheet").classList.remove("show"); show("pair");
 };
-document.addEventListener("visibilitychange", () => { if (!document.hidden && pair) { connect(); sendPC({ t: "ping" }); } });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && pair) { retry = 2000; connect(); pingPC(false); } });
 
 lang = load("rose-lang") || "ur-PK";
 document.querySelectorAll("[data-lang]").forEach((x) => x.classList.toggle("on", x.dataset.lang === lang));
