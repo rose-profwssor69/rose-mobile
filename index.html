@@ -11,7 +11,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Noto+Nastaliq+Urdu:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #03050b;
@@ -75,6 +75,11 @@
   .msg.rose small { color: var(--cyan); }
   .msg.me { align-self: flex-end; background: rgba(255, 95, 216, 0.1); border: 1px solid rgba(255, 95, 216, 0.3); border-right: 3px solid var(--pink); }
   .msg.me small { color: var(--pink); }
+  .msg span.ur { display: block; font-family: "Noto Nastaliq Urdu", serif; font-size: 16px; line-height: 2.1; direction: rtl; text-align: right; }
+  .disc { padding: 6px 11px; border-radius: 20px; border: 1px solid rgba(255, 77, 109, 0.6); background: rgba(255, 77, 109, 0.12); color: #ffb3c1; font-size: 10px; letter-spacing: 2px; }
+  .disc.off { border-color: rgba(61, 255, 168, 0.6); background: rgba(61, 255, 168, 0.12); color: var(--green); }
+  .pill.cut { color: var(--amber); border-color: rgba(255, 193, 77, 0.5); }
+  .pill.cut i { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
   .msg.sys { align-self: center; font-size: 13px; color: var(--muted); background: transparent; border: 1px dashed var(--line); }
   .bar { display: flex; gap: 8px; padding: 10px 0 14px; }
   .bar input { flex: 1; min-width: 0; padding: 13px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.4); color: var(--text); font-family: var(--body); font-size: 16px; outline: none; }
@@ -145,6 +150,7 @@
     <div class="brand">ROSE</div>
     <div style="display:flex;align-items:center;gap:6px">
       <div id="pcPill" class="pill"><i></i><span id="pcText">PC OFFLINE</span></div>
+      <button id="discBtn" class="disc">DISCONNECT</button>
       <button id="gearBtn" class="gear" aria-label="Settings">⚙</button>
     </div>
   </div>
@@ -189,6 +195,7 @@
   <div class="row"><span>Notifications</span><button id="notifBtn" class="chip">ALLOW</button></div>
   <div class="row"><span>Awaz test karein</span><button id="voiceBtn" class="chip">TEST</button></div>
   <div class="row"><span>PAIR ID (PC se milayein)</span><b id="pairIdTxt" style="font-family:var(--head);letter-spacing:2px;color:var(--cyan)">----</b></div>
+  <div class="row"><span>PC connection</span><button id="discBtn2" class="chip danger">DISCONNECT</button></div>
   <div class="row"><span>PC se dobara jorein</span><button id="rescanBtn" class="chip">📷 QR SCAN</button></div>
   <div class="row"><span>Pairing hatayein</span><button id="unpairBtn" class="chip danger">UNPAIR</button></div>
   <div class="row" style="border:none"><span></span><button id="closeSheet" class="chip">BAND</button></div>
@@ -258,7 +265,7 @@ function addMsg(who, text) {
   d.className = "msg " + who;
   const label = who === "rose" ? "ROSE" : who === "me" ? USER_TITLE.toUpperCase() : "";
   if (label) { const sm = document.createElement("small"); sm.textContent = label + " · " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); d.appendChild(sm); }
-  const sp = document.createElement("span"); sp.dir = "auto"; sp.textContent = text; d.appendChild(sp);
+  const sp = document.createElement("span"); sp.dir = "auto"; sp.textContent = text; if (/[\u0600-\u06ff]/.test(text)) sp.className = "ur"; d.appendChild(sp);
   $("chat").appendChild(d);
   $("chat").scrollTop = $("chat").scrollHeight;
   const hist = JSON.parse(load("rose-chat") || "[]"); hist.push([who, text]); store("rose-chat", JSON.stringify(hist.slice(-40)));
@@ -269,16 +276,38 @@ function restoreChat() {
 }
 function addMsgQuiet(who, text) {
   const d = document.createElement("div"); d.className = "msg " + who;
-  const sp = document.createElement("span"); sp.dir = "auto"; sp.textContent = text; d.appendChild(sp);
+  const sp = document.createElement("span"); sp.dir = "auto"; sp.textContent = text; if (/[\u0600-\u06ff]/.test(text)) sp.className = "ur"; d.appendChild(sp);
   $("chat").appendChild(d); $("chat").scrollTop = $("chat").scrollHeight;
 }
 
 /* ---------- PC status ---------- */
+let linkOff = load("rose-off") === "1"; // Professor ne DISCONNECT dabaya?
 function updatePill() {
-  const on = Date.now() - pcSeen < 400000;
+  const on = !linkOff && Date.now() - pcSeen < 400000;
   $("pcPill").classList.toggle("on", on);
-  $("pcText").textContent = on ? "PC LIVE" : "PC OFFLINE";
+  $("pcPill").classList.toggle("cut", linkOff);
+  $("pcText").textContent = linkOff ? "DISCONNECTED" : on ? "PC LIVE" : "PC OFFLINE";
+  ["discBtn", "discBtn2"].forEach((id) => { $(id).textContent = linkOff ? "CONNECT" : "DISCONNECT"; $(id).classList.toggle("off", linkOff); });
 }
+async function disconnectPC() {
+  if (inCall) endCall();
+  await sendPC({ t: "bye" }); // PC ko bata dena
+  linkOff = true; store("rose-off", "1");
+  clearTimeout(reconnectTimer);
+  pending.forEach((tm) => clearTimeout(tm)); pending.clear();
+  try { if (ws) ws.close(); } catch (e) {}
+  ws = null; pcSeen = 0;
+  updatePill();
+  addMsg("sys", "PC se rabta khatam. Dobara jorne ke liye CONNECT dabayein.");
+}
+function reconnectPC() {
+  linkOff = false; store("rose-off", null);
+  retry = 2000; lastPing = 0;
+  updatePill();
+  connect();
+  addMsg("sys", "PC se dobara jor rahi hoon...");
+}
+function toggleLink() { if (linkOff) reconnectPC(); else disconnectPC(); }
 setInterval(updatePill, 5000);
 
 /* ---------- Connection (ntfy WebSocket, encrypted) ----------
@@ -286,7 +315,7 @@ setInterval(updatePill, 5000);
    Is liye "ping" sirf app khulne par aur har 5 minute (jab screen on ho). */
 let retry = 2000, reconnectTimer = 0, lastWsMsg = 0, lastPing = 0, limitHit = false;
 function connect() {
-  if (!pair) return;
+  if (!pair || linkOff) return;
   if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
   ws = new WebSocket("wss://ntfy.sh/" + pair.down + "/ws?since=2m");
   ws.onopen = () => { retry = 2000; lastWsMsg = Date.now(); pingPC(false); };
@@ -307,7 +336,7 @@ function connect() {
   ws.onerror = () => { try { ws.close(); } catch (x) {} };
 }
 function scheduleReconnect() {
-  if (document.hidden || !pair) return; // background mein battery bachana; wapas aate hi jud jayega
+  if (document.hidden || !pair || linkOff) return; // background mein battery bachana; wapas aate hi jud jayega
   clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(connect, retry);
   retry = Math.min(retry * 2, 30000);
@@ -320,6 +349,7 @@ setInterval(() => {
 }, 20000);
 // PC zinda hai? (kam se kam paigham)
 function pingPC(force) {
+  if (linkOff) return;
   if (!force && Date.now() - lastPing < 60000) return;
   lastPing = Date.now();
   sendPC({ t: "ping" });
@@ -344,7 +374,7 @@ function onPC(m) {
     if (m.re && pending.has(m.re)) { clearTimeout(pending.get(m.re)); pending.delete(m.re); }
     const text = m.t === "error" ? "⚠ " + m.text : m.text;
     addMsg(m.t === "error" ? "sys" : "rose", text);
-    if (inCall) { $("liveText").textContent = text; speak(text); }
+    if (inCall) { $("liveText").textContent = text; speak(text, m.say); }
     else { setCallState("idle"); if (document.hidden) notify("Rose", text); }
   }
 }
@@ -352,6 +382,7 @@ function onPC(m) {
 /* ---------- Hukam bhejna ---------- */
 async function sendCommand(text) {
   text = text.trim(); if (!text) return;
+  if (linkOff) { addMsg("sys", "PC se rabta band hai. Pehle CONNECT dabayein."); if (inCall) endCall(); return; }
   addMsg("me", text);
   setCallState("thinking");
   const id = await sendPC({ t: "cmd", text: text });
@@ -396,10 +427,12 @@ function startCall() {
     $("callTime").textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
   }, 1000);
   const h = new Date().getHours();
-  const g = h >= 5 && h < 12 ? "Good morning" : h < 17 && h >= 12 ? "Good afternoon" : h >= 17 && h < 21 ? "Good evening" : "Good night";
-  const hello = g + ", " + USER_TITLE + ". What is your command?";
+  const gi = h >= 5 && h < 12 ? 0 : h < 17 && h >= 12 ? 1 : h >= 17 && h < 21 ? 2 : 3;
+  const gUr = ["\u0635\u0628\u062d \u0628\u062e\u06cc\u0631", "\u062f\u0648\u067e\u06c1\u0631 \u0628\u062e\u06cc\u0631", "\u0634\u0627\u0645 \u0628\u062e\u06cc\u0631", "\u0634\u0628 \u0628\u062e\u06cc\u0631"][gi];
+  const gRo = ["Subah bakhair", "Dopehar bakhair", "Shaam bakhair", "Shab bakhair"][gi];
+  const hello = gUr + "\u060c \u067e\u0631\u0648\u0641\u06cc\u0633\u0631\u06d4 \u0622\u067e \u06a9\u0627 \u06a9\u06cc\u0627 \u062d\u06a9\u0645 \u06c1\u06d2\u061f";
   $("liveText").textContent = hello;
-  speak(hello);
+  speak(hello, gRo + ", Professor. Aap ka kya hukam hai?");
 }
 
 function endCall() {
@@ -448,8 +481,10 @@ function pickVoice() {
   const female = /female|aria|jenny|ava|emma|samantha|zira|sonia|libby|natural|google us english|en-us-x-(sfg|tpc|iol)/i;
   return en.find((x) => female.test(x.name) && x.localService) || en.find((x) => female.test(x.name)) || en.find((x) => x.localService) || en[0] || vs[0] || null;
 }
-function speak(text) {
+function speak(text, alt) {
   if (!("speechSynthesis" in window)) { if (inCall) listenSoon(); return; }
+  // Urdu likha hai aur phone mein Urdu awaz nahi: Roman roop bolna
+  if (/[\u0600-\u06ff]/.test(text) && !speechSynthesis.getVoices().some((x) => x.lang.toLowerCase().startsWith("ur")) && alt) text = alt;
   clearInterval(speakTimer);
   speechSynthesis.cancel();
   if (speechSynthesis.paused) speechSynthesis.resume();
@@ -641,6 +676,7 @@ async function handleScan(text) {
   const prev = load("rose-pair");
   if (prev !== code) { store("rose-chat", null); $("chat").innerHTML = ""; seenIds.clear(); }
   store("rose-pair", code);
+  linkOff = false; store("rose-off", null);
   try { if (ws) ws.close(); } catch (e) {}
   ws = null;
   await startWith(code);
@@ -653,10 +689,11 @@ async function handleScan(text) {
 async function startWith(code) {
   pair = await derivePair(code);
   $("pairIdTxt").textContent = pair.up.slice(8, 12).toUpperCase();
+  updatePill();
   show("home");
   if (!$("chat").children.length) {
     restoreChat();
-    if (!$("chat").children.length) addMsg("rose", "Assalam-o-Alaikum, " + USER_TITLE + ". Rose Mobile tayyar hai.");
+    if (!$("chat").children.length) addMsg("rose", "\u0627\u0644\u0633\u0644\u0627\u0645 \u0639\u0644\u06cc\u06a9\u0645\u060c \u067e\u0631\u0648\u0641\u06cc\u0633\u0631\u06d4 \u0631\u0648\u0632 \u0645\u0648\u0628\u0627\u0626\u0644 \u062a\u06cc\u0627\u0631 \u06c1\u06d2\u06d4");
   }
   connect();
 }
@@ -673,6 +710,8 @@ $("callBtn").onclick = startCall;
 $("scanBtn").onclick = openScanner;
 $("rescanBtn").onclick = openScanner;
 $("scanClose").onclick = closeScanner;
+$("discBtn").onclick = toggleLink;
+$("discBtn2").onclick = () => { $("sheet").classList.remove("show"); toggleLink(); };
 $("endBtn").onclick = endCall;
 $("muteBtn").onclick = () => {
   muted = !muted; $("muteBtn").classList.toggle("on", muted);
@@ -692,7 +731,7 @@ $("notifBtn").onclick = async () => {
 $("voiceBtn").onclick = () => {
   const v = "speechSynthesis" in window ? pickVoice() : null;
   $("voiceBtn").textContent = v ? v.name.slice(0, 14) : "NO VOICE";
-  speak("Hello " + USER_TITLE + ". Meri awaz aa rahi hai?");
+  speak("\u06c1\u06cc\u0644\u0648 \u067e\u0631\u0648\u0641\u06cc\u0633\u0631\u060c \u06a9\u06cc\u0627 \u0645\u06cc\u0631\u06cc \u0622\u0648\u0627\u0632 \u0622 \u0631\u06c1\u06cc \u06c1\u06d2\u061f", "Hello Professor, kya meri awaz aa rahi hai?");
 };
 $("unpairBtn").onclick = () => {
   store("rose-pair", null); store("rose-chat", null); pair = null;
