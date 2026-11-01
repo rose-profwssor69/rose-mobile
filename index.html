@@ -192,6 +192,7 @@
   <div class="row"><span>Bolne ki zubaan</span>
     <div class="chips"><button class="chip" data-lang="ur-PK">اردو</button><button class="chip" data-lang="en-US">English</button></div>
   </div>
+  <div class="row"><span>Hands-free (khud sunna)</span><button id="hfBtn" class="chip">OFF</button></div>
   <div class="row"><span>Notifications</span><button id="notifBtn" class="chip">ALLOW</button></div>
   <div class="row"><span>Awaz test karein</span><button id="voiceBtn" class="chip">TEST</button></div>
   <div class="row"><span>PAIR ID (PC se milayein)</span><b id="pairIdTxt" style="font-family:var(--head);letter-spacing:2px;color:var(--cyan)">----</b></div>
@@ -438,40 +439,66 @@ function startCall() {
 function endCall() {
   inCall = false;
   clearInterval(callTimer);
-  try { if (rec) rec.abort(); } catch (e) {}
+  clearTimeout(silenceTimer); finishListen = null;
+  try { if (rec) { rec.onend = null; rec.abort(); } } catch (e) {}
   try { speechSynthesis.cancel(); } catch (e) {}
   setCallState("idle");
   show("home");
 }
 
-function listenSoon() { setTimeout(() => { if (inCall && !muted) listen(); }, 350); }
+let handsFree = load("rose-hf") === "1"; // default: 🎤 dabakar bolna (mic baar baar on/off nahi hota)
+let silenceTimer = 0, finishListen = null;
+function idleHint() { setCallState("idle"); $("muteBtn").classList.remove("on"); $("liveText").textContent = "🎤 dabakar bolein"; }
+function listenSoon() {
+  if (!inCall) return;
+  if (!handsFree) { idleHint(); return; }
+  setTimeout(() => { if (inCall) listen(); }, 600);
+}
 
+// Ek hi lambi "sunne ki" session: aap chup hon to khud bhej deti hai
 function listen() {
-  if (!inCall || muted) return;
-  try { if (rec) rec.abort(); } catch (e) {}
+  if (!inCall) return;
+  try { if (rec) { rec.onend = null; rec.abort(); } } catch (e) {}
+  try { speechSynthesis.cancel(); } catch (e) {}
   rec = new SR();
   rec.lang = lang;
   rec.interimResults = true;
-  rec.continuous = false;
+  rec.continuous = true;
   rec.maxAlternatives = 1;
-  let finalText = "";
+  let finalText = "", interimText = "", sent = false;
+  const finish = () => {
+    if (sent) return;
+    sent = true; finishListen = null;
+    clearTimeout(silenceTimer);
+    try { rec.stop(); } catch (e) {}
+    $("muteBtn").classList.remove("on");
+    const t = (finalText + " " + interimText).trim();
+    if (t) { silentTries = 0; sendCommand(t); }
+    else if (handsFree && ++silentTries < 2) listenSoon();
+    else { silentTries = 0; idleHint(); }
+  };
+  finishListen = finish;
   setCallState("listening");
+  $("muteBtn").classList.add("on");
+  $("liveText").textContent = "...";
   rec.onresult = (e) => {
-    let interim = "";
+    interimText = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
-      else interim += e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript + " ";
+      else interimText += e.results[i][0].transcript;
     }
-    $("liveText").textContent = (finalText + " " + interim).trim();
+    $("liveText").textContent = (finalText + interimText).trim();
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(finish, 1500); // 1.5 second khamoshi = baat khatam
   };
-  rec.onerror = (e) => { if (e.error === "not-allowed") { addMsg("sys", "Mic ki ijazat nahi mili."); endCall(); } };
-  rec.onend = () => {
-    if (!inCall) return;
-    if (finalText.trim()) { silentTries = 0; sendCommand(finalText); }
-    else if (++silentTries < 4) listenSoon();
-    else { silentTries = 0; muted = true; $("muteBtn").classList.add("on"); setCallState("listening"); $("liveText").textContent = "Mic ruka hua hai. Baat karne ke liye 🎤 dabayein."; }
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") { addMsg("sys", "Mic ki ijazat nahi mili."); endCall(); }
   };
-  try { rec.start(); } catch (e) { listenSoon(); }
+  rec.onend = () => { if (inCall) finish(); };
+  // 12 second tak kuch na bola to band
+  clearTimeout(silenceTimer);
+  silenceTimer = setTimeout(finish, 12000);
+  try { rec.start(); } catch (e) { finish(); }
 }
 
 let speakTimer = 0;
@@ -710,13 +737,14 @@ $("callBtn").onclick = startCall;
 $("scanBtn").onclick = openScanner;
 $("rescanBtn").onclick = openScanner;
 $("scanClose").onclick = closeScanner;
+$("hfBtn").textContent = handsFree ? "ON" : "OFF"; $("hfBtn").classList.toggle("on", handsFree);
+$("hfBtn").onclick = () => { handsFree = !handsFree; store("rose-hf", handsFree ? "1" : null); $("hfBtn").textContent = handsFree ? "ON" : "OFF"; $("hfBtn").classList.toggle("on", handsFree); };
 $("discBtn").onclick = toggleLink;
 $("discBtn2").onclick = () => { $("sheet").classList.remove("show"); toggleLink(); };
 $("endBtn").onclick = endCall;
 $("muteBtn").onclick = () => {
-  muted = !muted; $("muteBtn").classList.toggle("on", muted);
-  if (muted) { try { if (rec) rec.abort(); } catch (e) {} setCallState("listening"); }
-  else { silentTries = 0; $("liveText").textContent = ""; listen(); }
+  if (finishListen) finishListen(); // bol chuke: ab bhej do
+  else { silentTries = 0; listen(); }
 };
 $("bar").onsubmit = (e) => { e.preventDefault(); const v = $("textIn").value; $("textIn").value = ""; sendCommand(v); };
 $("gearBtn").onclick = () => $("sheet").classList.add("show");
