@@ -593,6 +593,29 @@ async function aiClip(text) {
   }
   return null; // aaj ki muft had poori
 }
+// Awaz ke aakhir ki "radio jaisi khar-khar" kaat kar narmi se khatam karna
+function cleanTail(x, rate) {
+  const win = Math.max(1, Math.round(rate * 0.02));
+  const frames = Math.floor(x.length / win);
+  if (frames < 10) return x.length;
+  const en = [], zc = [];
+  for (let f = 0; f < frames; f++) {
+    let e = 0, z = 0;
+    for (let i = f * win; i < (f + 1) * win; i++) { e += x[i] * x[i]; if (i > f * win && (x[i] >= 0) !== (x[i - 1] >= 0)) z++; }
+    en.push(Math.sqrt(e / win)); zc.push(z / win);
+  }
+  const sorted = en.slice().sort((p, q) => p - q);
+  const loud = sorted[Math.floor(sorted.length * 0.8)] || 0;
+  let last = -1;
+  for (let f = frames - 1; f >= 0; f--) { if (en[f] > loud * 0.15 && zc[f] < 0.22) { last = f; break; } }
+  if (last < 0) return x.length;
+  const end = Math.min(x.length, (last + 1) * win + Math.round(rate * 0.15));
+  const fade = Math.min(end, Math.round(rate * 0.08));
+  for (let i = 0; i < fade; i++) x[end - fade + i] *= 1 - i / fade;
+  const fin = Math.min(end, Math.round(rate * 0.01));
+  for (let i = 0; i < fin; i++) x[i] *= i / fin;
+  return end;
+}
 async function speakAI(text, tok) {
   const ctx = getAC(); if (!ctx) return false;
   let clip = null;
@@ -601,9 +624,11 @@ async function speakAI(text, tok) {
   if (tok !== aiToken) return true; // beech mein rok diya
   const view = new DataView(clip.data);
   const n = Math.floor(clip.data.byteLength / 2);
-  const buf = ctx.createBuffer(1, Math.max(1, n), clip.rate);
-  const ch = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) ch[i] = view.getInt16(i * 2, true) / 32768;
+  const raw = new Float32Array(Math.max(1, n));
+  for (let i = 0; i < n; i++) raw[i] = view.getInt16(i * 2, true) / 32768;
+  const len = Math.max(1, cleanTail(raw, clip.rate));
+  const buf = ctx.createBuffer(1, len, clip.rate);
+  buf.getChannelData(0).set(raw.subarray(0, len));
   const src = ctx.createBufferSource();
   src.buffer = buf; src.connect(ctx.destination);
   src.onended = () => { if (aiSrc === src) aiSrc = null; if (tok === aiToken) { if (inCall) listenSoon(); else setCallState("idle"); } };
