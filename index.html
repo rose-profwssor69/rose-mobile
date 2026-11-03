@@ -370,12 +370,13 @@ async function sendPC(obj) {
 
 /* ---------- PC se aaye paigham ---------- */
 function onPC(m) {
+  if (m.t === "pong" && m.v) { saveVoice(m.v); return; }
   if (m.t === "status" && m.text === "thinking") { setCallState("thinking"); return; }
   if (m.t === "reply" || m.t === "done" || m.t === "error") {
     if (m.re && pending.has(m.re)) { clearTimeout(pending.get(m.re)); pending.delete(m.re); }
     const text = m.t === "error" ? "⚠ " + m.text : m.text;
     addMsg(m.t === "error" ? "sys" : "rose", text);
-    if (inCall) { $("liveText").textContent = text; speak(text, m.say); }
+    if (inCall) { $("liveText").textContent = text; speak(text, m.say, m.emo); }
     else { setCallState("idle"); if (document.hidden) notify("Rose", text); }
   }
 }
@@ -419,6 +420,7 @@ function setCallState(s) {
 function startCall() {
   if (!SR) { addMsg("sys", "Is browser mein awaz wala feature nahi. Android par Chrome se app install karein. Tab tak likh kar baat karein."); return; }
   inCall = true; muted = false; silentTries = 0;
+  getAC(); // AI awaz ke liye: phone ki ijazat isi tap par milti hai
   $("muteBtn").classList.remove("on");
   show("call");
   callStart = Date.now();
@@ -442,6 +444,7 @@ function endCall() {
   clearTimeout(silenceTimer); finishListen = null;
   try { if (rec) { rec.onend = null; rec.abort(); } } catch (e) {}
   try { speechSynthesis.cancel(); } catch (e) {}
+  stopAI();
   setCallState("idle");
   show("home");
 }
@@ -460,6 +463,7 @@ function listen() {
   if (!inCall) return;
   try { if (rec) { rec.onend = null; rec.abort(); } } catch (e) {}
   try { speechSynthesis.cancel(); } catch (e) {}
+  stopAI();
   rec = new SR();
   rec.lang = lang;
   rec.interimResults = true;
@@ -508,7 +512,118 @@ function pickVoice() {
   const female = /female|aria|jenny|ava|emma|samantha|zira|sonia|libby|natural|google us english|en-us-x-(sfg|tpc|iol)/i;
   return en.find((x) => female.test(x.name) && x.localService) || en.find((x) => female.test(x.name)) || en.find((x) => x.localService) || en[0] || vs[0] || null;
 }
-function speak(text, alt) {
+/* =========================================================
+   ROSE KI AI AWAZ (Achernar) - wahi jo PC par hai
+   PC pairing ke khufia paigham mein Gemini key bhejta hai; phone khud awaz banata hai.
+   Na chale to phone ki apni awaz.
+   ========================================================= */
+let voiceCfg = null;
+try { voiceCfg = JSON.parse(load("rose-voice") || "null"); } catch (e) { voiceCfg = null; }
+function saveVoice(v) {
+  try {
+    const c = JSON.parse(v);
+    voiceCfg = c && c.k ? c : null;
+    store("rose-voice", voiceCfg ? JSON.stringify(voiceCfg) : null);
+  } catch (e) {}
+}
+const TTS_MODELS = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts", "gemini-2.5-flash-tts", "gemini-2.5-flash-lite-preview-tts"];
+const PERSONA = "Rose: a bright, youthful 22-year-old Pakistani girl with a light, sweet, slightly higher-pitched voice. Fresh and lively, never mature or heavy. She talks lovingly and playfully to the Professor and reacts with real emotion.";
+const STYLE_TEXT = { soft: "softly and lovingly, like a caring close companion", cheerful: "cheerfully, with a gentle smile in the voice", calm: "calmly and professionally" };
+let ac = null, aiSrc = null, aiToken = 0;
+function getAC() {
+  try {
+    if (!ac) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; ac = new C(); }
+    if (ac.state === "suspended") ac.resume().catch(() => {});
+  } catch (e) { return null; }
+  return ac;
+}
+function stopAI() {
+  aiToken++;
+  if (aiSrc) { try { aiSrc.onended = null; aiSrc.stop(); } catch (e) {} aiSrc = null; }
+}
+function stripTags(t) { return String(t || "").replace(/<[^<>]{1,20}>/g, " ").replace(/\s{2,}/g, " ").trim(); }
+function ttsBlocks() { try { return JSON.parse(load("rose-tts-block") || "{}"); } catch (e) { return {}; } }
+function ttsBlock(model, ms) { const b = ttsBlocks(); b[model] = Date.now() + ms; store("rose-tts-block", JSON.stringify(b)); }
+function msToPacificMidnight() {
+  const pt = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+  const next = new Date(pt); next.setHours(24, 2, 0, 0);
+  return Math.max(60000, next - pt);
+}
+async function sha16(s) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(d)).slice(0, 16).map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+// Ek dafa bani awaz phone mein mehfooz: dobara muft aur foran
+async function aiClip(text) {
+  const c = voiceCfg; if (!c || !c.k) return null;
+  const ck = "https://rose.local/v/" + (await sha16(c.v + "|" + c.s + "|" + text));
+  let cache = null;
+  try { cache = await caches.open("rose-voice-v1"); const hit = await cache.match(ck); if (hit) return { data: await hit.arrayBuffer(), rate: Number(hit.headers.get("x-rate")) || 24000 }; } catch (e) { cache = null; }
+  const ur = /[\u0600-\u06ff]/.test(text);
+  const style = STYLE_TEXT[c.s] || STYLE_TEXT.soft;
+  const langText = ur ? "in natural Pakistani Urdu" : "in clear, natural English";
+  const blocks = ttsBlocks();
+  for (const model of TTS_MODELS) {
+    if ((blocks[model] || 0) > Date.now()) continue;
+    const prompt = /^gemini-[3-9]/.test(model)
+      ? "## Director's notes:\n" + PERSONA + " Speak " + style + ", " + langText + ". Act out expression tags such as <laugh> or <sigh>; never read them aloud.\n\n## Transcript:\n" + text
+      : "Say this " + style + ", " + langText + ", in the voice of a bright, youthful 22-year-old girl:\n" + stripTags(text);
+    let res;
+    try {
+      res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": c.k },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: c.v || "Achernar" } } } } })
+      });
+    } catch (e) { return null; } // internet nahi
+    if (res.status === 404) { ttsBlock(model, 7 * 24 * 3600 * 1000); continue; }
+    if (res.status === 429) { const b = await res.text(); ttsBlock(model, /PerDay|per day|daily/i.test(b) ? msToPacificMidnight() : 65000); continue; }
+    if (res.status === 400 || res.status === 403) return null; // key ka masla: phone ki awaz
+    if (!res.ok) continue;
+    const data = await res.json();
+    const part = data && data.candidates && data.candidates[0] && data.candidates[0].content ? (data.candidates[0].content.parts || []).find((x) => x.inlineData) : null;
+    if (!part || !part.inlineData || !part.inlineData.data) continue;
+    const m = String(part.inlineData.mimeType || "").match(/rate=(\d+)/);
+    const rate = m ? Number(m[1]) : 24000;
+    const bin = atob(part.inlineData.data);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    try { if (cache) await cache.put(ck, new Response(bytes.slice(0), { headers: { "x-rate": String(rate) } })); } catch (e) {}
+    return { data: bytes.buffer, rate: rate };
+  }
+  return null; // aaj ki muft had poori
+}
+async function speakAI(text, tok) {
+  const ctx = getAC(); if (!ctx) return false;
+  let clip = null;
+  try { clip = await aiClip(text); } catch (e) { clip = null; }
+  if (!clip) return false;
+  if (tok !== aiToken) return true; // beech mein rok diya
+  const view = new DataView(clip.data);
+  const n = Math.floor(clip.data.byteLength / 2);
+  const buf = ctx.createBuffer(1, Math.max(1, n), clip.rate);
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = view.getInt16(i * 2, true) / 32768;
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(ctx.destination);
+  src.onended = () => { if (aiSrc === src) aiSrc = null; if (tok === aiToken) { if (inCall) listenSoon(); else setCallState("idle"); } };
+  aiSrc = src;
+  setCallState("speaking");
+  src.start();
+  return true;
+}
+function speak(text, alt, emo) {
+  stopAI();
+  try { speechSynthesis.cancel(); } catch (e) {}
+  if (voiceCfg && voiceCfg.k) {
+    const tok = aiToken;
+    setCallState("speaking");
+    speakAI(emo || text, tok).then((ok) => { if (!ok && tok === aiToken) speakTTS(stripTags(text), alt); });
+    return;
+  }
+  speakTTS(stripTags(text), alt);
+}
+function speakTTS(text, alt) {
   if (!("speechSynthesis" in window)) { if (inCall) listenSoon(); return; }
   // Urdu likha hai aur phone mein Urdu awaz nahi: Roman roop bolna
   if (/[\u0600-\u06ff]/.test(text) && !speechSynthesis.getVoices().some((x) => x.lang.toLowerCase().startsWith("ur")) && alt) text = alt;
@@ -757,8 +872,9 @@ $("notifBtn").onclick = async () => {
   const p = await Notification.requestPermission(); $("notifBtn").textContent = p === "granted" ? "ON" : "OFF";
 };
 $("voiceBtn").onclick = () => {
+  getAC();
   const v = "speechSynthesis" in window ? pickVoice() : null;
-  $("voiceBtn").textContent = v ? v.name.slice(0, 14) : "NO VOICE";
+  $("voiceBtn").textContent = voiceCfg && voiceCfg.k ? "AI \u00b7 " + (voiceCfg.v || "Achernar") : v ? v.name.slice(0, 14) : "NO VOICE";
   speak("\u06c1\u06cc\u0644\u0648 \u067e\u0631\u0648\u0641\u06cc\u0633\u0631\u060c \u06a9\u06cc\u0627 \u0645\u06cc\u0631\u06cc \u0622\u0648\u0627\u0632 \u0622 \u0631\u06c1\u06cc \u06c1\u06d2\u061f", "Hello Professor, kya meri awaz aa rahi hai?");
 };
 $("unpairBtn").onclick = () => {
