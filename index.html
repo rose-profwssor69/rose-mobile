@@ -597,20 +597,37 @@ async function aiClip(text) {
 function cleanTail(x, rate) {
   const win = Math.max(1, Math.round(rate * 0.02));
   const frames = Math.floor(x.length / win);
-  if (frames < 10) return x.length;
-  const en = [], zc = [];
-  for (let f = 0; f < frames; f++) {
-    let e = 0, z = 0;
-    for (let i = f * win; i < (f + 1) * win; i++) { e += x[i] * x[i]; if (i > f * win && (x[i] >= 0) !== (x[i - 1] >= 0)) z++; }
-    en.push(Math.sqrt(e / win)); zc.push(z / win);
-  }
+  if (frames < 15) return x.length;
+  const en = new Array(frames);
+  for (let f = 0; f < frames; f++) { let e = 0; for (let i = f * win; i < (f + 1) * win; i++) e += x[i] * x[i]; en[f] = Math.sqrt(e / win); }
   const sorted = en.slice().sort((p, q) => p - q);
-  const loud = sorted[Math.floor(sorted.length * 0.8)] || 0;
-  let last = -1;
-  for (let f = frames - 1; f >= 0; f--) { if (en[f] > loud * 0.15 && zc[f] < 0.22) { last = f; break; } }
-  if (last < 0) return x.length;
-  const end = Math.min(x.length, (last + 1) * win + Math.round(rate * 0.15));
-  const fade = Math.min(end, Math.round(rate * 0.08));
+  const loud = sorted[Math.floor(frames * 0.8)] || 0;
+  if (loud <= 0) return x.length;
+  const quiet = (f) => en[f] < loud * 0.08;
+  const lo = Math.floor(rate / 450), hi = Math.floor(rate / 80);
+  const periodic = (f) => {
+    const s = f * win; let c0 = 0; for (let i = 0; i < win; i++) c0 += x[s + i] * x[s + i];
+    if (c0 <= 0) return 0; let best = 0;
+    for (let L = lo; L <= hi; L += 2) { let c = 0; for (let i = 0; i + L < win + L && s + i + L < x.length; i++) c += x[s + i] * x[s + i + L]; if (c > best) best = c; }
+    return best / c0;
+  };
+  let endF = frames; // frames [0,endF) kept
+  for (let round = 0; round < 3; round++) {
+    let e = endF - 1; while (e >= 0 && quiet(e)) e--;
+    if (e < 0) break;
+    let s = e; while (s > 0 && !quiet(s - 1)) s--;
+    let g = s - 1; while (g >= 0 && quiet(g)) g--;
+    const segLen = e - s + 1, gap = s - 1 - g;
+    if (g < 0 || segLen > 20 || gap < 8) { endF = e + 1; break; }
+    let p = 0; for (let f = s; f <= e; f++) p += periodic(f); p /= segLen;
+    if (p < 0.5) { endF = g + 1; continue; } // akela be-sur jhatka (khar-khar): kaat do
+    endF = e + 1; break;
+  }
+  // lagataar khar-khar (be-sur shor) jo awaz ke foran baad chipka ho
+  let t = endF - 1; while (t >= 0 && !quiet(t) && periodic(t) < 0.35) t--;
+  if (endF - 1 - t > 8) endF = t + 1;
+  const end = Math.min(x.length, endF * win + Math.round(rate * 0.12));
+  const fade = Math.min(end, Math.round(rate * 0.06));
   for (let i = 0; i < fade; i++) x[end - fade + i] *= 1 - i / fade;
   const fin = Math.min(end, Math.round(rate * 0.01));
   for (let i = 0; i < fin; i++) x[i] *= i / fin;
